@@ -13,7 +13,6 @@ library(ggplot2)
 library(patchwork)
 library(maps)
 
-# setwd("E:/Google Drive/GKI/Kutatás/adatelőkészítés/interpolation")
 setwd("D:/HIG")
 
 set.seed(123)
