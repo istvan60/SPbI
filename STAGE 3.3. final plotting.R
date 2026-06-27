@@ -25,7 +25,7 @@ if (!requireNamespace("hexbin", quietly = TRUE)) {
 # USER SETTINGS
 # -----------------------------
 # Folder containing combined_point_eval_with_ICM.rds
-base_dir <- "D:/HIG/teszt, hogy megy-e/SPbI_threshold_extracted/extracted_for_fig2"
+base_dir <- "/Users/hatvaniistvan/Downloads/tst/SPbI_threshold_extracted/extracted_for_fig2"
 
 # If you run the script from inside the output folder, this fallback keeps it portable.
 if (!dir.exists(base_dir) && file.exists("combined_point_eval_with_ICM.rds")) {

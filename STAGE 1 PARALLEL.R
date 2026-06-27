@@ -19,7 +19,7 @@ library(future.apply)
 # 0) Settings
 # -----------------------------
 
-out_dir   <- "D:/HIG/teszt, hogy megy-e/SPbI_threshold_extracted"
+out_dir   <- "/Users/hatvaniistvan/Downloads/tst/SPbI_threshold_extracted"
 
 # Start conservatively on Windows.
 # Increase only if RAM usage is acceptable.

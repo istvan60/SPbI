@@ -20,7 +20,7 @@ suppressPackageStartupMessages({
 # USER SETTINGS
 # ------------------------------------------------------------
 
-base_dir <- "~/Downloads/tst/SPbI_threshold_extracted/extracted_for_fig2"
+base_dir <- "/Users/hatvaniistvan/Downloads/tst/SPbI_threshold_extracted/extracted_for_fig2"
 
 interp_eval_file <- file.path(base_dir, "interp_point_eval.rds")
 

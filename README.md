@@ -14,7 +14,7 @@ Benchmarking of eight imputation methods for monthly δ¹⁸O and δ²H time ser
 flowchart TD
     A([inputation_test6.xlsx\nraw GNIP station data]) --> S0
 
-    S0["**Stage 0** — Data preparation, imputation bootstrap, bundle export\n`Stage_0_prepare_and_bootstrap.R`\n─────────────────────────────────────────\n• Reads δ¹⁸O, δ²H, and station coordinates\n• Filters sites with ≥ 84 consecutive months\n• Applies lapse-rate altitude corrections\n• Runs bootstrap masking across 6 gap fractions\n  (1–32%) with 8 imputation methods in parallel\n• Saves Bland–Altman diagnostic plots\n• Exports reproducibility bundle"]
+    S0["**Stage 0** — Data preparation, imputation bootstrap, bundle export\n`Stage_0_prepare_and_bootstrap.R`\n─────────────────────────────────────────\n• Reads δ¹⁸O, δ²H, and station coordinates\n• Filters sites with ≥ 84 consecutive paired months\n• Identifies all qualifying continuous windows per site\n  (sites with multiple windows retain all of them)\n• Masking and testing are restricted to those windows only\n• Applies lapse-rate altitude corrections\n• Runs bootstrap masking across 6 gap fractions\n  (1–32%) with 8 imputation methods in parallel\n• Produces qualifying-periods figure with masked months\n• Saves Bland–Altman diagnostic plots (fixed y-axis limits)\n• Exports reproducibility bundle"]
     S0 --> B([minimal_SPbI_input_bundle.rds])
 
     B --> S1
@@ -45,7 +45,7 @@ flowchart TD
 
 Run the scripts in order from a fresh R session. Each stage saves its output to disk so subsequent stages can be run independently.
 
-1. **Stage 0** — edit the `input_xlsx` and `out_dir` paths at the top of the script, then source it. Runtime: 30–120 min depending on CPU cores.
+1. **Stage 0** — edit the `input_xlsx` and `out_dir` paths at the top of the script, then source it. Masking is automatically restricted to each site's qualifying continuous window(s) (≥ 84 months). Runtime: 30–120 min depending on CPU cores.
 2. **Stage 1** — reads `minimal_SPbI_input_bundle.rds`; parallelised with `furrr`.
 3. **Stage 2** — reads `spbi_nonoverlapping_band_errors.rds`; produces CI tests and threshold plots.
 4. **Stage 3** — must be run in the same R session as Stage 0 (uses the `all_imputed` object in memory); exports the point-level evaluation table.

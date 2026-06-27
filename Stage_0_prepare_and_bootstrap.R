@@ -54,10 +54,10 @@ suppressPackageStartupMessages({
 # USER SETTINGS  —  edit these, leave everything else alone
 # ============================================================
 
-input_xlsx <- "D:/HIG/teszt, hogy megy-e/inputation_test6.xlsx"
+input_xlsx <- "/Users/hatvaniistvan/Library/CloudStorage/GoogleDrive-hatvaniig@gmail.com/My Drive/hatvani istvan gabor/cikkek/interpolation paper HESS/rev/inputation_test6.xlsx"
 
 # Folder where all output files will be written.
-out_dir <- "D:/HIG/teszt, hogy megy-e/SPbI_threshold_extracted"
+out_dir <- "/Users/hatvaniistvan/Downloads/tst/SPbI_threshold_extracted"
 
 # Masking fractions to test.
 X_vals <- c(0.01, 0.02, 0.04, 0.08, 0.16, 0.32)
@@ -134,6 +134,23 @@ compute_longest_run <- function(dates) {
   if (any(r$values)) max(r$lengths[r$values]) else 0L
 }
 
+# Returns a Date vector of all months that fall inside ANY continuous run
+# of >= min_months paired observations for a given site.
+qualifying_dates <- function(dates, min_months) {
+  all_months <- seq(
+    floor_date(min(dates), "month"),
+    floor_date(max(dates), "month"),
+    by = "1 month"
+  )
+  present <- all_months %in% floor_date(dates, "month")
+  r       <- rle(present)
+  ends    <- cumsum(r$lengths)
+  starts  <- c(1L, ends[-length(ends)] + 1L)
+  good    <- which(r$values & r$lengths >= min_months)
+  if (length(good) == 0L) return(as.Date(character(0)))
+  do.call(c, lapply(good, function(i) all_months[starts[i]:ends[i]]))
+}
+
 long_sites <- df_O18 %>%
   dplyr::group_by(Site) %>%
   dplyr::summarise(longest = compute_longest_run(Date), .groups = "drop") %>%
@@ -142,13 +159,26 @@ long_sites <- df_O18 %>%
 
 message("  Sites retained: ", length(long_sites))
 
-df_O18_trim <- df_O18 %>%
+# For each focus site keep only dates inside qualifying continuous windows.
+# If a site has multiple runs >= min_continuous_months, all are retained.
+qualifying_dates_per_site <- df_O18 %>%
   semi_join(df_de, by = c("Site", "Date")) %>%
-  filter(Site %in% long_sites)
+  dplyr::filter(Site %in% long_sites) %>%
+  dplyr::group_by(Site) %>%
+  dplyr::group_modify(~{
+    keep <- qualifying_dates(.x$Date, min_continuous_months)
+    dplyr::filter(.x, floor_date(Date, "month") %in% keep)
+  }) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(Site, Date)
+
+message("  Qualifying site-months retained: ", nrow(qualifying_dates_per_site))
+
+df_O18_trim <- df_O18 %>%
+  semi_join(qualifying_dates_per_site, by = c("Site", "Date"))
 
 df_H2_trim <- df_H2 %>%
-  semi_join(df_de, by = c("Site", "Date")) %>%
-  filter(Site %in% long_sites)
+  semi_join(qualifying_dates_per_site, by = c("Site", "Date"))
 
 # ────────────────────────────────────────────────────────────
 # §3  Distance matrix
@@ -481,6 +511,113 @@ all_imputed <- all_imputed %>%
     )
   )
 
+# ── §7.0  Qualifying periods + masked months figure ──────────────────────────
+
+message("§7.0  Drawing qualifying periods and masked months figure ...")
+
+# All qualifying continuous windows per site (for background shading)
+qualifying_windows <- df_O18_trim %>%
+  dplyr::group_by(Site) %>%
+  dplyr::group_modify(~{
+    dates     <- sort(.x$Date)
+    all_months <- seq(floor_date(min(dates), "month"),
+                      floor_date(max(dates), "month"), by = "1 month")
+    present   <- all_months %in% floor_date(dates, "month")
+    r         <- rle(present)
+    ends      <- cumsum(r$lengths)
+    starts    <- c(1L, ends[-length(ends)] + 1L)
+    good      <- which(r$values & r$lengths >= min_continuous_months)
+    if (length(good) == 0L) return(tibble())
+    tibble(
+      win_start = all_months[starts[good]],
+      win_end   = all_months[ends[good]]
+    )
+  }) %>%
+  dplyr::ungroup()
+
+# Show masked months for a single representative replicate (X=8%, boot=1).
+# This gives a sparse, readable view of what a typical masking looks like.
+rep_X    <- 0.08
+rep_boot <- 1L
+
+# Full record extent per site (all paired observations)
+full_extent <- dplyr::inner_join(
+    df_O18_trim %>% dplyr::select(Site, Date),
+    df_H2_trim  %>% dplyr::select(Site, Date),
+    by = c("Site", "Date")
+  ) %>%
+  dplyr::group_by(Site) %>%
+  dplyr::summarise(
+    rec_start = floor_date(min(Date), "month"),
+    rec_end   = floor_date(max(Date), "month"),
+    .groups   = "drop"
+  )
+
+masked_example <- all_imputed %>%
+  dplyr::filter(X == rep_X, boot == rep_boot) %>%
+  dplyr::distinct(Site, Date) %>%
+  dplyr::mutate(Month = floor_date(Date, "month"))
+
+# Site order: by earliest qualifying window start, then name
+site_order_fig <- qualifying_windows %>%
+  dplyr::group_by(Site) %>%
+  dplyr::summarise(first_win = min(win_start), .groups = "drop") %>%
+  dplyr::arrange(dplyr::desc(first_win), Site) %>%
+  dplyr::pull(Site)
+
+full_extent$Site        <- factor(full_extent$Site,        levels = site_order_fig)
+qualifying_windows$Site <- factor(qualifying_windows$Site, levels = site_order_fig)
+masked_example$Site     <- factor(masked_example$Site,     levels = site_order_fig)
+
+p_periods <- ggplot() +
+  # Full paired record — thin grey line
+  geom_segment(
+    data = full_extent,
+    aes(x = rec_start, xend = rec_end, y = Site, yend = Site),
+    colour = "grey70", linewidth = 1.2, lineend = "butt"
+  ) +
+  # Qualifying continuous windows — blue filled band
+  geom_segment(
+    data = qualifying_windows,
+    aes(x = win_start, xend = win_end, y = Site, yend = Site),
+    colour = "#2166ac", linewidth = 5, alpha = 0.25, lineend = "butt"
+  ) +
+  geom_segment(
+    data = qualifying_windows,
+    aes(x = win_start, xend = win_end, y = Site, yend = Site),
+    colour = "#2166ac", linewidth = 0.7, lineend = "butt"
+  ) +
+  # Masked months — red tick marks
+  geom_tile(
+    data = masked_example,
+    aes(x = Month, y = Site),
+    fill = "#b2182b", width = 25, height = 0.6
+  ) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y", expand = c(0.01, 0)) +
+  scale_y_discrete(limits = site_order_fig) +
+  labs(
+    title    = paste0("Focus sites: data coverage, qualifying periods, and example masking (X=",
+                      round(rep_X * 100), "%, replicate ", rep_boot, ")"),
+    subtitle = "Grey line = full paired δ¹⁸O & δ²H record  |  Blue band = qualifying continuous run ≥84 months  |  Red = withheld months",
+    x = NULL, y = NULL
+  ) +
+  theme_minimal(base_size = 9) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor   = element_blank(),
+    axis.text.y        = element_text(size = 7),
+    plot.title         = element_text(face = "bold", size = 10),
+    plot.subtitle      = element_text(size = 8, color = "grey40")
+  )
+
+print(p_periods)
+ggsave(
+  file.path(out_dir, "qualifying_periods_and_masked_months.png"),
+  p_periods, width = 14, height = 16, dpi = 150
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 summarise_var <- function(df, var) {
   o <- paste0(var, "_orig"); i <- paste0(var, "_imp")
   df %>%
@@ -531,14 +668,14 @@ ba_bias <- ba_long %>%
     .groups = "drop"
   )
 
-make_ba_plot <- function(which_var) {
+make_ba_plot <- function(which_var, y_min = NULL, y_max = NULL) {
   dfv <- ba_long %>%
     dplyr::filter(.data[["var"]] == which_var)
-  
+
   statv <- ba_bias %>%
     dplyr::filter(.data[["var"]] == which_var)
-  
-  ggplot(dfv, aes(x = orig, y = diff)) +
+
+  p <- ggplot(dfv, aes(x = orig, y = diff)) +
     geom_hline(yintercept = 0, linetype = "dotted", color = "grey50") +
     geom_bin2d(bins = 60, alpha = 0.9) +
     scale_fill_viridis_c(name = "count", option = "C") +
@@ -558,11 +695,24 @@ make_ba_plot <- function(which_var) {
       strip.background   = element_rect(fill = "#F0F0F0", color = NA),
       panel.grid.minor   = element_blank()
     )
+
+  if (!is.null(y_min) || !is.null(y_max))
+    p <- p + coord_cartesian(ylim = c(y_min, y_max))
+
+  p
 }
 
-p_ba_O18 <- make_ba_plot("δ18O")
-p_ba_H2  <- make_ba_plot("δ2H")
-p_ba_dex <- make_ba_plot("d-excess")
+# ── Y-axis limits per variable ───────────────────────────────────────────────
+ba_ylim <- list(
+  "δ18O"     = c(y_min = -25,  y_max =  25),
+  "δ2H"      = c(y_min = -200, y_max = 200),
+  "d-excess" = c(y_min = -30,  y_max =  30)
+)
+# ─────────────────────────────────────────────────────────────────────────────
+
+p_ba_O18 <- make_ba_plot("δ18O",    ba_ylim[["δ18O"]][["y_min"]],    ba_ylim[["δ18O"]][["y_max"]])
+p_ba_H2  <- make_ba_plot("δ2H",     ba_ylim[["δ2H"]][["y_min"]],     ba_ylim[["δ2H"]][["y_max"]])
+p_ba_dex <- make_ba_plot("d-excess", ba_ylim[["d-excess"]][["y_min"]], ba_ylim[["d-excess"]][["y_max"]])
 
 print(p_ba_O18); print(p_ba_H2); print(p_ba_dex)
 

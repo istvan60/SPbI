@@ -25,9 +25,7 @@ library(grid)
 # 0) User settings
 # -----------------------------
 
-extract_dir <- "SPbI_threshold_extracted"
-
-out_dir   <- "D:/HIG/teszt, hogy megy-e/SPbI_threshold_extracted"
+out_dir   <- "/Users/hatvaniistvan/Downloads/tst/SPbI_threshold_extracted"
 
 file.exists(file.path(out_dir, "spbi_nonoverlapping_band_errors_d18O.rds"))
 file.exists(file.path(out_dir, "spbi_nonoverlapping_band_errors_d2H.rds"))

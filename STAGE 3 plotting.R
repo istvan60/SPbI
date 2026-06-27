@@ -19,7 +19,7 @@ suppressPackageStartupMessages({
 # -----------------------------
 # USER SETTINGS
 # -----------------------------
-out_dir <- "extracted_for_fig2"
+out_dir <- "/Users/hatvaniistvan/Downloads/tst/SPbI_threshold_extracted/extracted_for_fig2"
 
 target_object <- "all_imputed"
 
