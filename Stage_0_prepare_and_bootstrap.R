@@ -309,26 +309,40 @@ safe_fun <- function(fun) {
   }
 }
 
-clip_to_obs_range <- function(out, x) {
-  obs <- which(!is.na(x))
-  if (length(obs) == 0L) return(out)
-  if (min(obs) > 1L)            out[seq_len(min(obs) - 1L)]          <- NA_real_
-  if (max(obs) < length(out))   out[seq(max(obs) + 1L, length(out))] <- NA_real_
-  out
-}
-
 impute_funs <- list(
   # LOCF: leading NAs have no predecessor → stay NA (na_remaining = "keep")
   LOCF = function(x)
     imputeTS::na_locf(x, option = "locf", na_remaining = "keep"),
 
-  # Linear/Spline/Stine: no extrapolation beyond first/last observation → NA
-  Linear = function(x)
-    clip_to_obs_range(imputeTS::na_interpolation(x, option = "linear"), x),
-  Spline = function(x)
-    clip_to_obs_range(imputeTS::na_interpolation(x, option = "spline"), x),
-  Stine  = function(x)
-    clip_to_obs_range(imputeTS::na_interpolation(x, option = "stine"),  x),
+  # Linear/Spline/Stine: no extrapolation beyond first/last observation → NA.
+  # Logic is inlined (not a helper) so furrr workers can find it.
+  Linear = function(x) {
+    out <- imputeTS::na_interpolation(x, option = "linear")
+    obs <- which(!is.na(x))
+    if (length(obs) > 0L) {
+      if (min(obs) > 1L)           out[seq_len(min(obs) - 1L)]          <- NA_real_
+      if (max(obs) < length(out))  out[seq(max(obs) + 1L, length(out))] <- NA_real_
+    }
+    out
+  },
+  Spline = function(x) {
+    out <- imputeTS::na_interpolation(x, option = "spline")
+    obs <- which(!is.na(x))
+    if (length(obs) > 0L) {
+      if (min(obs) > 1L)           out[seq_len(min(obs) - 1L)]          <- NA_real_
+      if (max(obs) < length(out))  out[seq(max(obs) + 1L, length(out))] <- NA_real_
+    }
+    out
+  },
+  Stine = function(x) {
+    out <- imputeTS::na_interpolation(x, option = "stine")
+    obs <- which(!is.na(x))
+    if (length(obs) > 0L) {
+      if (min(obs) > 1L)           out[seq_len(min(obs) - 1L)]          <- NA_real_
+      if (max(obs) < length(out))  out[seq(max(obs) + 1L, length(out))] <- NA_real_
+    }
+    out
+  },
 
   # Kalman: numerical failures already caught by safe_fun wrapper
   Kalman = imputeTS::na_kalman,
@@ -874,5 +888,5 @@ for (nm in names(bundle)) {
   )
 }
 
-message("\nDone. Run Phase I next.")
+message("\nDone. Run STAGE I next.")
 
