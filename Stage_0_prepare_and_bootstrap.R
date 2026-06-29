@@ -356,7 +356,8 @@ safe_sin_nls <- function(x, dates) {
 }
 
 # Spatial imputation: mean of altitude-corrected neighbours within radius.
-# Closes over df_O18_trim and df_H2_trim defined in §1–2.
+# Closes over df_O18 and df_H2 (full records) so neighbours contribute any
+# available month, not just their own qualifying-window months.
 spatial_impute_O18 <- function(x, dates, site) {
   alt0 <- stations$Altitude[stations$Site == site]
   out  <- x
@@ -364,7 +365,7 @@ spatial_impute_O18 <- function(x, dates, site) {
     nbrs <- stations$Site[
       which(dist_km[site, ] > 0 & dist_km[site, ] <= spatial_radius_bootstrap_km)
     ]
-    tmp <- df_O18_trim %>%
+    tmp <- df_O18 %>%
       filter(Site %in% nbrs, Date == dates[j]) %>%
       mutate(O18c = O18 + (Altitude - alt0) * lapse_d18O)
     if (any(!is.na(tmp$O18c))) out[j] <- mean(tmp$O18c, na.rm = TRUE)
@@ -379,7 +380,7 @@ spatial_impute_H2 <- function(x, dates, site) {
     nbrs <- stations$Site[
       which(dist_km[site, ] > 0 & dist_km[site, ] <= spatial_radius_bootstrap_km)
     ]
-    tmp <- df_H2_trim %>%
+    tmp <- df_H2 %>%
       filter(Site %in% nbrs, Date == dates[j]) %>%
       mutate(H2c = H2 + (Altitude - alt0) * lapse_d2H)
     if (any(!is.na(tmp$H2c))) out[j] <- mean(tmp$H2c, na.rm = TRUE)
@@ -396,7 +397,8 @@ message("§6  Setting up bootstrap loop ...")
 methods <- c(names(impute_funs), "Sinusoidal", "SPbI")
 sites   <- unique(df_O18_trim$Site)
 
-# Per-site cache to avoid repeated filtering inside workers
+# Per-site cache: qualifying-window data only for the target site.
+# SPbI neighbour lookup uses full records (df_O18 / df_H2) separately.
 site_cache <- setNames(vector("list", length(sites)), sites)
 for (s in sites) {
   tmpO <- df_O18_trim %>% filter(Site == s) %>% arrange(Date)
@@ -429,12 +431,12 @@ message("  Total jobs: ", nrow(job))
 do_one <- function(Site, X, boot, method) {
   sc     <- site_cache[[Site]]
   yO     <- sc$yO; yH <- sc$yH; dates <- sc$dates
-  
+
   seed_val <- as.integer(
     (sum(utf8ToInt(Site)) + round(1e6 * X) * 10007 + boot) %% .Machine$integer.max
   )
   set.seed(seed_val)
-  
+
   n_rm <- ceiling(X * length(yO))
   idx  <- sample.int(length(yO), n_rm)
   
@@ -462,6 +464,9 @@ do_one <- function(Site, X, boot, method) {
     impute_funs_safe[[method]](yH_na)
   )
   
+  O18_imp_vals <- yO_imp[idx]
+  H2_imp_vals  <- yH_imp[idx]
+
   tibble(
     Site        = Site,
     X           = X,
@@ -470,9 +475,10 @@ do_one <- function(Site, X, boot, method) {
     n_neighbors = n_neighbors,
     Date        = dates[idx],
     O18_orig    = yO[idx],
-    O18_imp     = yO_imp[idx],
+    O18_imp     = O18_imp_vals,
     H2_orig     = yH[idx],
-    H2_imp      = yH_imp[idx]
+    H2_imp      = H2_imp_vals,
+    fallback    = is.na(O18_imp_vals) | is.na(H2_imp_vals)
   ) %>%
     mutate(
       d_ex_orig = H2_orig - 8 * O18_orig,
@@ -491,8 +497,27 @@ all_imputed <- future_pmap_dfr(
   .options = furrr_options(seed = TRUE)
 )
 
- plan(sequential)
+plan(sequential)
 message("  all_imputed rows: ", nrow(all_imputed))
+
+# ── Fallback summary ─────────────────────────────────────────
+fallback_summary <- all_imputed %>%
+  dplyr::group_by(method, X) %>%
+  dplyr::summarise(
+    n_total    = dplyr::n(),
+    n_fallback = sum(fallback),
+    rate_pct   = round(100 * mean(fallback), 3),
+    .groups    = "drop"
+  ) %>%
+  dplyr::arrange(method, X)
+
+message("\n── Fallback rates per method and masking fraction ──")
+print(as.data.frame(fallback_summary), row.names = FALSE)
+
+saveRDS(fallback_summary,
+        file.path(out_dir, "fallback_summary.rds"))
+fwrite(fallback_summary,
+       file.path(out_dir, "fallback_summary.csv"))
 
 # ────────────────────────────────────────────────────────────
 # §7  [Optional] Diagnostic performance plots
@@ -706,7 +731,7 @@ make_ba_plot <- function(which_var, y_min = NULL, y_max = NULL) {
 ba_ylim <- list(
   "δ18O"     = c(y_min = -25,  y_max =  25),
   "δ2H"      = c(y_min = -200, y_max = 200),
-  "d-excess" = c(y_min = -30,  y_max =  30)
+  "d-excess" = c(y_min = -20,  y_max =  20)
 )
 # ─────────────────────────────────────────────────────────────────────────────
 
