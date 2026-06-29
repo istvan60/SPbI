@@ -309,13 +309,45 @@ safe_fun <- function(fun) {
   }
 }
 
+clip_to_obs_range <- function(out, x) {
+  obs <- which(!is.na(x))
+  if (length(obs) == 0L) return(out)
+  if (min(obs) > 1L)            out[seq_len(min(obs) - 1L)]          <- NA_real_
+  if (max(obs) < length(out))   out[seq(max(obs) + 1L, length(out))] <- NA_real_
+  out
+}
+
 impute_funs <- list(
-  LOCF             = imputeTS::na_locf,
-  Linear           = function(x) imputeTS::na_interpolation(x, option = "linear"),
-  Spline           = function(x) imputeTS::na_interpolation(x, option = "spline"),
-  Stine            = function(x) imputeTS::na_interpolation(x, option = "stine"),
-  Kalman           = imputeTS::na_kalman,
-  `Moving-average` = function(x) imputeTS::na_ma(x, k = 5)
+  # LOCF: leading NAs have no predecessor → stay NA (na_remaining = "keep")
+  LOCF = function(x)
+    imputeTS::na_locf(x, option = "locf", na_remaining = "keep"),
+
+  # Linear/Spline/Stine: no extrapolation beyond first/last observation → NA
+  Linear = function(x)
+    clip_to_obs_range(imputeTS::na_interpolation(x, option = "linear"), x),
+  Spline = function(x)
+    clip_to_obs_range(imputeTS::na_interpolation(x, option = "spline"), x),
+  Stine  = function(x)
+    clip_to_obs_range(imputeTS::na_interpolation(x, option = "stine"),  x),
+
+  # Kalman: numerical failures already caught by safe_fun wrapper
+  Kalman = imputeTS::na_kalman,
+
+  # Moving average k=5: requires exactly 5 non-NA neighbours on each side;
+  # boundary positions and positions adjacent to other masked months → NA
+  `Moving-average` = function(x) {
+    k   <- 5L
+    n   <- length(x)
+    out <- x
+    for (i in which(is.na(x))) {
+      li <- i - k; ri <- i + k
+      if (li >= 1L && ri <= n) {
+        nbrs <- x[c(li:(i - 1L), (i + 1L):ri)]
+        if (!any(is.na(nbrs))) out[i] <- mean(nbrs)
+      }
+    }
+    out
+  }
 )
 impute_funs_safe <- purrr::map(impute_funs, safe_fun)
 
