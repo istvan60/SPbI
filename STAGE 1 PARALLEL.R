@@ -564,6 +564,6 @@ fwrite(
   file.path(out_dir, "paired_SPbI_vs_baselines_nonoverlapping_bands.csv.gz")
 )
 
-message("Done.")
+message("Done, now run STAGE 2.")
 message("Main output:")
 message(normalizePath(file.path(out_dir, "paired_SPbI_vs_baselines_nonoverlapping_bands.rds")))

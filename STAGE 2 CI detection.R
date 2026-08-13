@@ -1351,19 +1351,4 @@ print(
 )
 
 message("\nAll files written to: ", out_dir)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+message("Now run STAGE 3 Plotting")
