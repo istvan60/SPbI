@@ -174,6 +174,17 @@ qualifying_dates_per_site <- df_O18 %>%
 
 message("  Qualifying site-months retained: ", nrow(qualifying_dates_per_site))
 
+# The sites that actually enter the benchmark. This is a subset of
+# long_sites: the selection above scores runs on delta-18O alone, whereas
+# the qualifying windows require *paired* O18 + H2 (via the df_de join).
+# Sites with a long O18 run but no >= min_continuous_months paired run
+# therefore drop out here and contribute no rows downstream. Use this,
+# not long_sites, whenever the focus-site set is reported or plotted.
+focus_sites <- unique(qualifying_dates_per_site$Site)
+
+message("  Focus sites entering the benchmark: ", length(focus_sites),
+        " (of ", length(long_sites), " passing the delta-18O-only screen)")
+
 df_O18_trim <- df_O18 %>%
   semi_join(qualifying_dates_per_site, by = c("Site", "Date"))
 
@@ -207,7 +218,7 @@ if (all(c("maps", "metR", "sf", "rnaturalearth") %in%
   message("§4  Drawing station map ...")
 
   sites_map <- stations %>%
-    dplyr::mutate(InTrim = Site %in% long_sites) %>%
+    dplyr::mutate(InTrim = Site %in% focus_sites) %>%
     tidyr::drop_na(Longitude, Latitude)
 
   xlim <- range(sites_map$Longitude, na.rm = TRUE) + c(-0.5, 0.5)
@@ -863,6 +874,12 @@ bundle <- list(
     dplyr::select(.data$Site, .data$Date, .data$O18, .data$Altitude),
   df_H2_min       = df_H2_trim %>%
     dplyr::select(.data$Site, .data$Date, .data$H2, .data$Altitude),
+  # NOTE: keyed on long_sites, so this is a SUPERSET of the benchmark set --
+  # it carries the extra delta-18O-only sites that have no paired qualifying
+  # window. That is harmless here because Stage 1 uses it purely as an
+  # altitude lookup for target sites (all of which are in core_combos), and
+  # neighbour values come from df_O18_min / df_H2_min. Do NOT use
+  # stations_min to count or plot focus sites -- use unique(df_O18_min$Site).
   stations_min    = stations %>%
     dplyr::filter(.data$Site %in% long_sites) %>%
     dplyr::select(.data$Site, .data$Altitude, .data$Longitude, .data$Latitude),
