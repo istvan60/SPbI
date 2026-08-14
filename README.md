@@ -43,14 +43,36 @@ flowchart TD
 
 ## How to run
 
-Run the scripts in order from a fresh R session. Each stage saves its output to disk so subsequent stages can be run independently.
+**Before running:** every script carries its own absolute paths in a
+`USER SETTINGS` block at the top — not just Stage 0. Edit all of them:
 
-1. **Stage 0** — edit the `input_xlsx` and `out_dir` paths at the top of the script, then source it. Masking is automatically restricted to each site's qualifying continuous window(s) (≥ 84 months). Runtime: 30–120 min depending on CPU cores.
-2. **Stage 1** — reads `minimal_SPbI_input_bundle.rds`; parallelised with `furrr`.
-3. **Stage 2** — reads `spbi_nonoverlapping_band_errors.rds` and `paired_SPbI_vs_baselines_nonoverlapping_bands.rds`. Produces the bootstrap CI tests and threshold detection, the bandwise MAD/RMSE confidence intervals, the reviewer-requested robustness diagnostics (seasonal missingness, consecutive-gap run lengths, masked-vs-all extreme-value comparison), the per-method fallback-rate tables and heatmap, and the significance boxplots.
-4. **Stage 3** — must be run in the same R session as Stage 0 (uses the `all_imputed` object in memory); exports the point-level evaluation table.
-5. **Stage 3.2** — reads `interp_point_eval.rds` and the IAEA GNIP ICM NetCDF file.
+| Script | Variable(s) to set |
+|---|---|
+| `Stage_0_prepare_and_bootstrap.R` | `input_xlsx`, `out_dir` |
+| `STAGE 1 PARALLEL.R` | `out_dir` (same as Stage 0) |
+| `STAGE 2 CI detection.R` | `out_dir` (same as Stage 0) |
+| `STAGE 3 plotting.R` | `out_dir` → an `extracted_for_fig2` subfolder |
+| `STAGE 3.2 ICM extraction.R` | `base_dir` (= Stage 3's `out_dir`) |
+| `STAGE 3.3. final plotting.R` | `base_dir` (= Stage 3's `out_dir`) |
+
+Stages 3.2 and 3.3 additionally expect the IAEA GNIP ICM NetCDF
+(`Monthly_194709_202403.nc`) to be present in `base_dir`. That file is not
+redistributed here — obtain it from the IAEA.
+
+**Two stages are session-coupled and cannot be run standalone.** Stage 3
+and the robustness-check sections of Stage 2 both read objects that Stage 0
+leaves in memory, so they must be sourced in the same R session as Stage 0.
+Run order:
+
+1. **Stage 0** — edit `input_xlsx` and `out_dir`, then source it. Masking is automatically restricted to each site's qualifying continuous window(s) (≥ 84 months). Runtime: ~20 min on 15 cores; 30–120 min typical.
+2. **Stage 3** — source it **in Stage 0's session** (uses `all_imputed`); exports the point-level evaluation table.
+3. **Stage 2** — source it **in Stage 0's session** too. The CI tests and threshold detection are disk-based and will run anywhere, but the fallback-rate, seasonality, gap-length and extreme-value sections need `all_imputed`, `df_O18_trim` and `removed_dates`. Run standalone it completes the disk-based analysis and skips the rest with a warning.
+4. **Stage 1** — reads `minimal_SPbI_input_bundle.rds`; fully disk-based; parallelised with `furrr`. Can run in a fresh session at any point after Stage 0.
+5. **Stage 3.2** — reads `interp_point_eval.rds` and the ICM NetCDF.
 6. **Stage 3.3** — reads `combined_point_eval_with_ICM.rds`; produces all final figures.
+
+Note that Stage 2 reads Stage 1's output, so Stage 1 must finish before
+Stage 2's disk-based sections run.
 
 ## Outputs by stage
 
@@ -91,8 +113,16 @@ Figures:
 The diagnostic figures are produced for δ¹⁸O only; the CI tests and significance
 boxplots cover both isotopes.
 
-**Stage 3** — `interp_point_eval.rds` / `.csv`, `interp_perf_summary.rds` / `.csv`,
-`interp_perf_by_boot.rds`, `interp_ba_stats.rds`
+The last nine of these — `fallback_rates_table.csv`, `fallback_rates_wide.csv`,
+`fallback_heatmap_d18O.png`, `seasonal_missingness.csv` / `.png`,
+`bootstrap_consecutive_gaps.csv`, `bootstrap_run_length_distribution.png`,
+`extremes_masked_vs_all.csv` and `masked_vs_all_distribution_d18O.png` — are
+produced only when Stage 2 is sourced in Stage 0's session (see above).
+
+**Stage 3** — `interp_point_eval.rds`, `interp_perf_summary.rds` / `.csv`,
+`interp_perf_by_boot.rds`, `interp_ba_stats.rds`.
+`interp_point_eval.csv` is written only if `write_point_csv <- TRUE` is set
+in the script's USER SETTINGS block (off by default; the table is large).
 
 **Stage 3.2** — `combined_point_eval_with_ICM.rds` / `.csv`,
 `combined_perf_summary_with_ICM.rds` / `.csv`,
@@ -102,10 +132,14 @@ boxplots cover both isotopes.
 `ICM_grid_point_eval_current_run.rds` / `.csv`,
 plus join diagnostics: `ICM_NetCDF_join_match_report.csv`,
 `ICM_station_to_nearest_grid_cell.csv`,
-`ICM_unmatched_current_withheld_keys.csv`,
-`ICM_missing_station_coordinates.csv`
+`ICM_unmatched_current_withheld_keys.csv`.
+`ICM_missing_station_coordinates.csv` is written only when a station lacks
+coordinates, in which case the script stops with an error.
 
-**Stage 3.3** — figures `BA_with_ICM_<var>.pdf` / `.png`,
+**Stage 3.3** — written to a `combined_BA_performance_LinCCC_with_ICM/`
+subfolder of `base_dir`, not to `base_dir` itself. `<var>` is `d18O`, `d2H`
+and `d_excess`:
+figures `BA_with_ICM_<var>.pdf` / `.png`,
 `observed_vs_predicted_with_ICM_<var>.pdf` / `.png`,
 `MAD_RMSE_with_ICM_<var>.pdf` / `.png`; tables
 `combined_ba_stats_recalculated_with_ICM.rds` / `.csv`,

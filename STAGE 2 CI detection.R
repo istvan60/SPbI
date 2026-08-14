@@ -861,13 +861,19 @@ data.table::fwrite(
     file.path(out_dir, "manuscript_table_paired_difference_tests.csv")
 )
 
-message("Done.")
+message("Disk-based analysis complete.")
 message("Important outputs:")
 message("- paired_difference_CI_and_tests.csv")
+message("- manuscript_table_paired_difference_tests.csv")
 message("- threshold_summary_SPbI_better_than_both.csv")
-message("- plot_paired_difference_baseline_minus_SPbI_d18O.png")
-message("- plot_paired_difference_baseline_minus_SPbI_d2H.png")
-message("- plot_decision_heatmap_SPbI_better_than_both.png")
+message("- decision_by_band_SPbI_better_than_both.csv")
+message("- SPbI_bandwise_MAD_RMSE_CI.csv / baseline_MAD_RMSE_CI.csv")
+message("- plot_SPbI_bandwise_box_significance_with_baselines_d18O.png/.pdf")
+message("- plot_SPbI_bandwise_box_significance_with_baselines_d2H.png/.pdf")
+message("")
+message("The robustness-check sections below require the Stage 0 session")
+message("objects (all_imputed, df_O18_trim, removed_dates) and are skipped")
+message("when this script is run standalone.")
 
 
 
@@ -897,14 +903,58 @@ message("- plot_decision_heatmap_SPbI_better_than_both.png")
 # Do NOT detach plyr. Instead, all dplyr/tidyr/lubridate/ggplot2
 # calls are explicitly namespaced.
 #
-# Run in the R session where Full_futas.RData is already loaded,
-# OR uncomment load() below.
+# IMPORTANT — these sections are NOT disk-based. Unlike everything
+# above, they read Stage 0's in-memory objects, so this script must be
+# sourced in the same R session as Stage 0 for them to run:
 #
-# Required objects in the session:
-#   all_imputed
-#   df_O18_trim
-#   removed_dates
+#   all_imputed, df_O18_trim, removed_dates
+#
+# Run standalone, the analysis above still completes and the block below
+# is skipped with a warning. The outputs that are skipped are:
+#   fallback_rates_table.csv, fallback_rates_wide.csv,
+#   fallback_heatmap_d18O.png, seasonal_missingness.csv/.png,
+#   bootstrap_consecutive_gaps.csv, bootstrap_run_length_distribution.png,
+#   extremes_masked_vs_all.csv, masked_vs_all_distribution_d18O.png
 # ============================================================
+
+# Resolve the three inputs. Only all_imputed is session-only: Stage 0 does
+# not export it. The other two are recovered from the bundle when absent --
+# note Stage 0 names its session copy `removed_dates_out`, so a bare
+# `removed_dates` is normally NOT present even in Stage 0's own session.
+.bundle_path <- file.path(out_dir, "minimal_SPbI_input_bundle.rds")
+.bundle <- NULL
+.get_bundle <- function() {
+  if (is.null(.bundle) && file.exists(.bundle_path)) .bundle <<- readRDS(.bundle_path)
+  .bundle
+}
+
+if (!exists("removed_dates", where = globalenv())) {
+  if (exists("removed_dates_out", where = globalenv())) {
+    removed_dates <- get("removed_dates_out", envir = globalenv())
+  } else if (!is.null(.get_bundle())) {
+    removed_dates <- data.table::as.data.table(.get_bundle()$removed_dates)
+  }
+}
+
+if (!exists("df_O18_trim", where = globalenv()) && !is.null(.get_bundle())) {
+  df_O18_trim <- .get_bundle()$df_O18_min
+}
+
+.needed <- c("all_imputed", "df_O18_trim", "removed_dates")
+.missing <- .needed[!vapply(.needed, exists, logical(1), where = environment())]
+
+if (length(.missing) > 0L) {
+
+  warning(
+    "Skipping the robustness-check sections: object(s) ",
+    paste(.missing, collapse = ", "),
+    " could not be resolved. `all_imputed` exists only in Stage 0's ",
+    "session, so source this script there to produce the fallback-rate, ",
+    "seasonality, gap-length and extreme-value outputs.",
+    call. = FALSE, immediate. = TRUE
+  )
+
+} else {
 
 # ============================================================
 # PART 1: FALLBACK RATES
@@ -1351,4 +1401,7 @@ print(
 )
 
 message("\nAll files written to: ", out_dir)
+
+}  # end of the robustness-check block guarded on the Stage 0 session
+
 message("Now run STAGE 3 Plotting")

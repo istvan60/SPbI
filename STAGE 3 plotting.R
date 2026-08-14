@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # Stage 3 — Export point-level evaluation table from loaded session
 # Hatvani I.G. & Kern Z. — Mind the gap (HESS, 2026)
 # https://github.com/istvan60/SPbI

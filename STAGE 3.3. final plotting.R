@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # Stage 3.3 — Combined Bland-Altman, observed-vs-predicted, and performance plots
 # Hatvani I.G. & Kern Z. — Mind the gap (HESS, 2026)
 # https://github.com/istvan60/SPbI
