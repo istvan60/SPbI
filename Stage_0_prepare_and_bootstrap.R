@@ -259,11 +259,27 @@ if (all(c("maps", "metR", "sf", "rnaturalearth") %in%
     land_bb  <- suppressWarnings(st_crop(land, bb))
     land_u   <- suppressWarnings(st_union(land_bb))
     water_sf <- suppressWarnings(st_difference(st_as_sf(bb), land_u))
-    coords_w <- st_coordinates(st_cast(water_sf, "MULTIPOLYGON"))
-    water_df <- as.data.frame(coords_w)[, c("X", "Y", "L1", "L2")]
-    names(water_df) <- c("long", "lat", "g1", "g2")
-    water_df$group  <- interaction(water_df$g1, water_df$g2, drop = TRUE)
-    water_df        <- water_df[, c("long", "lat", "group")]
+
+    # A bounding box that is entirely land (a compact inland network, say)
+    # leaves water_sf empty, and st_coordinates() then returns a matrix
+    # with no L1/L2 columns. Fall back to an empty water layer rather than
+    # failing -- the map is a diagnostic, not a result.
+    water_df <- data.frame(
+      long = numeric(0), lat = numeric(0), group = factor()
+    )
+
+    if (nrow(water_sf) > 0L) {
+      coords_w <- st_coordinates(st_cast(water_sf, "MULTIPOLYGON"))
+      if (all(c("X", "Y", "L1", "L2") %in% colnames(coords_w))) {
+        water_df <- as.data.frame(coords_w)[, c("X", "Y", "L1", "L2")]
+        names(water_df) <- c("long", "lat", "g1", "g2")
+        water_df$group  <- interaction(water_df$g1, water_df$g2, drop = TRUE)
+        water_df        <- water_df[, c("long", "lat", "group")]
+      }
+    }
+
+    if (nrow(water_df) == 0L)
+      message("  (no water bodies inside the map extent; skipping water layer)")
 
     p_map <- ggplot() +
       geom_raster(data = topo, aes(x = lon, y = lat, fill = height),
@@ -358,8 +374,15 @@ impute_funs <- list(
   # Kalman: numerical failures already caught by safe_fun wrapper
   Kalman = imputeTS::na_kalman,
 
-  # Moving average k=5: requires exactly 5 non-NA neighbours on each side;
-  # boundary positions and positions adjacent to other masked months → NA
+  # Moving average, k = 5: equivalent to
+  #   imputeTS::na_ma(x, k = 5, weighting = "simple")
+  # wherever a complete window exists (verified numerically), but modified so
+  # that an incomplete window returns NA instead of being truncated. na_ma
+  # always yields a value at the series edges, which would report a 0% fallback
+  # rate for this method; `maxgap` caps gap length but cannot require a full
+  # window, so the behaviour is not reachable by any na_ma argument.
+  # Note na_ma's default weighting is "exponential", not "simple".
+  # Boundary positions, and positions adjacent to other masked months, → NA.
   `Moving-average` = function(x) {
     k   <- 5L
     n   <- length(x)

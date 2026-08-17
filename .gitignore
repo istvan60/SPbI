@@ -1,3 +1,6 @@
 *.rds
 *.xlsx
 SPbI_threshold_extracted/
+
+# the synthetic template is tracked deliberately (see make_example_input.R)
+!example_input.xlsx

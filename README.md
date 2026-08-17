@@ -41,6 +41,57 @@ flowchart TD
 
 ---
 
+## Input data format
+
+The analysis reads a single Excel workbook with three sheets. The real input is
+compiled from the national monitoring networks cited in the manuscript and is
+not redistributed here, but `make_example_input.R` generates
+`example_input.xlsx`, a small synthetic file with the same layout that the
+pipeline runs on end to end. Use it to check the shape of your own data before
+substituting it.
+
+```r
+source("make_example_input.R")   # writes example_input.xlsx
+```
+
+| Sheet | Column | Type | Required |
+|---|---|---|---|
+| `O18` | `Site` | text — must match `coords` | yes |
+| | `Date` | date, one row per month | yes |
+| | `O18` | δ¹⁸O in ‰ VSMOW | yes |
+| | `Dexcess`, `Group` | | ignored |
+| `H2` | `Site` | text | yes |
+| | `Date` | date | yes |
+| | `H2` | δ²H in ‰ VSMOW | yes |
+| | `Dexcess`, `Group` | | ignored |
+| `coords` | `Site` | text | yes |
+| | `Latitude`, `Longitude` | decimal degrees, WGS84 | yes |
+| | `Altitude` | m a.s.l. | yes |
+| | `Group` | | ignored |
+
+`Dexcess` and `Group` are read but never used — d-excess is recomputed
+throughout as `H2 − 8 × O18`. They are kept in the example only because the
+original file carries them.
+
+Notes on content:
+
+- **One row per site-month.** Dates are floored to the month, so the day
+  component only has to be consistent (the example uses the 15th).
+- **Missing months are absent rows, not `NA` rows.** Gaps are inferred from
+  which months are present.
+- **δ¹⁸O and δ²H must be paired.** A site qualifies on months present in *both*
+  sheets; a δ¹⁸O value with no matching δ²H month contributes nothing.
+- **Sites need an uninterrupted run of ≥ `min_continuous_months`** (84 by
+  default, set in Stage 0). Sites without one are dropped. Note that scattering
+  gaps thinly across a long record still fragments it below the threshold — it
+  is the *longest continuous stretch* that counts, not the total number of
+  observations.
+- **SPbI needs neighbours.** It averages altitude-corrected values from sites
+  within `spatial_radius_bootstrap_km` (100 km by default). A network sparser
+  than that radius will fall back on most months.
+- Any site named `VIENNA` is removed in Stage 0; edit `remove_sites()` if that
+  is not wanted.
+
 ## How to run
 
 **Before running:** every script carries its own absolute paths in a
